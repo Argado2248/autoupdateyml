@@ -2,25 +2,19 @@
 
 Keeps the `functions:` block in `serverless.yml` in sync with your handlers.
 
-Annotate a handler with the route it serves, and the block is regenerated for you
-— on every `serverless deploy`, before the deploy happens.
+Install it and deploy — new handlers are wired up automatically, with no
+annotations and no configuration:
 
-```js
-/**
- * @route POST /users
- */
-export const handler = async (event) => { ... };
+```
+$ serverless deploy
+auto-routes: ✓ updated serverless.yml (+2 new)
+auto-routes:   + createOrder  POST /orders          ← functions/createOrder/index.mjs
+auto-routes:   + getOrderById GET  /orders/{id}     ← functions/getOrderById/index.mjs
+Deploying my-api to stage dev (eu-north-1)
 ```
 
-```yaml
-functions:
-  createUser:
-    handler: src/functions/createUser.handler
-    events:
-      - http:
-          path: '/users'
-          method: post
-```
+The route comes from the handler's name and location; the method from its verb
+prefix. Add a `@route` comment only when you want something different.
 
 ## Install
 
@@ -61,17 +55,42 @@ plugins:
   - ./plugins/auto-routes
 ```
 
-```
-$ serverless deploy
-auto-routes: ✓ updated serverless.yml (+2 new)
-auto-routes:   + createUser   POST /users        ← src/functions/createUser.js
-auto-routes:   + healthCheck  GET  /health       ← src/functions/health.js
-Deploying notiscan-api to stage dev (eu-north-1)
-```
 
-## Annotations
+## How routes are inferred
 
-Put a JSDoc block directly above the exported handler.
+For a handler with no annotation:
+
+- **Method** comes from the verb the name starts with.
+  `get`/`list`/`fetch`/`find`/`read`/`show` → GET, `create`/`add`/`insert`/`post`/`submit`/`register` → POST,
+  `replace`/`put`/`set` → PUT, `update`/`edit`/`patch`/`modify` → PATCH,
+  `delete`/`remove`/`destroy` → DELETE. An unrecognised verb falls back to GET.
+- **Resource** is the rest of the name, pluralized: `createOrder` → `/orders`.
+- **Directories** above the handler become path prefixes, so
+  `functions/admin/deleteAuditLog.js` → `/admin/audit-logs/{id}`. A folder that
+  merely repeats the handler name (`functions/listProducts/index.mjs`) does not.
+- **Id parameters** are added for a `ById` suffix, for a `[id]` / `{id}` / `:id`
+  directory segment, and for PUT/PATCH/DELETE on a singular resource name.
+
+| File | Route |
+| --- | --- |
+| `functions/listProducts/index.mjs` | `GET /products` |
+| `functions/getOrderById/index.mjs` | `GET /orders/{id}` |
+| `src/functions/createInvoice.ts` | `POST /invoices` |
+| `src/functions/removeBooking.ts` | `DELETE /bookings/{id}` |
+| `api/bookings/post.js` | `POST /bookings` |
+| `functions/tickets/[id]/get.js` | `GET /tickets/{id}` |
+
+A route already present in `serverless.yml` is never moved by inference — the
+deployed path wins, so installing this into an existing project cannot change
+a live endpoint. Inference only decides routes the config has not seen before.
+
+Files that export several named symbols are treated as helper modules, not
+handlers, and are skipped.
+## Overriding a route
+
+Inference covers the common cases. When you need an exact route — a path that
+does not follow from the name, or a method the verb does not imply — put a
+JSDoc block directly above the exported handler. An annotation always wins.
 
 | Tag | Purpose |
 | --- | --- |
@@ -112,7 +131,7 @@ the sync on its own.
 npx autoupdateyml              # update serverless.yml
 npx autoupdateyml --check      # report only; exit 1 if out of date
 npx autoupdateyml --strict     # exit non-zero on a malformed annotation
-npx autoupdateyml -s api       # scan ./api instead of ./src
+npx autoupdateyml -s api       # scan ./api instead of auto-detecting
 ```
 
 `--check` is the CI form — it fails the build when someone adds a handler and
@@ -136,7 +155,8 @@ Optional, under `custom` in `serverless.yml`:
 ```yaml
 custom:
   autoRoutes:
-    source: src      # directory to scan   (default: src)
+    source: functions  # directory to scan  (default: auto-detect)
+    eventType: httpApi # http | httpApi     (default: match the file)
     strict: false    # fail on a malformed annotation
     enabled: true    # set false to disable the deploy hook
 ```
@@ -147,18 +167,20 @@ The `functions:` block is rewritten as text, not parsed and re-dumped, so
 everything else in the file survives byte for byte — comments, key order,
 `${self:...}` and `${sls:stage}` variables, `resources:`, `provider:`.
 
-Inside `functions:`, entries with no matching annotated handler are **left
-alone** and reported:
+Inside `functions:`, entries with no matching handler are **left alone** and
+reported:
 
 ```
-⚠ 1 function in serverless.yml with no annotated source:
-    legacyWebhook
-  Left unchanged — remove by hand if dead.
+⚠ 2 functions in serverless.yml not matched to a handler:
+    legacyWebhook  src/legacy/webhook.handler     not an http route, or hand-written
+    ghost          functions/ghost/index.handler  handler file not found
+  Left unchanged.
 ```
 
-This is what keeps hand-written entries safe — a function wired to SQS, SNS, or a
-schedule has no `@route` to find, so it is preserved rather than deleted. The
-tool never removes a function; pruning dead entries stays a manual decision.
+This keeps hand-written entries safe — a function wired to SQS, SNS or a schedule
+is preserved rather than deleted. The tool never removes a function; pruning dead
+entries stays a manual decision. An entry whose handler file is missing is called
+out separately, since it deploys but fails at runtime.
 
 When an annotation and the config disagree, the annotation wins and the change
 is reported:
@@ -171,6 +193,9 @@ is reported:
 ## Notes
 
 - Requires Node 18+. No runtime dependencies.
+- Generated events match the style the config already uses — `httpApi`
+  (API Gateway v2) or `http` (REST) — so the tool never introduces a second,
+  conflicting API. `custom.autoRoutes.eventType` overrides the detection.
 - Scanned: `.js`, `.mjs`, `.cjs`, `.ts`, `.mts`, `.cts`. Skipped: `node_modules`,
   `dist`, `build`, `.serverless`, `*.test.*`, `*.spec.*`, `*.d.ts`.
 - Duplicate routes and duplicate function names are reported as warnings; use

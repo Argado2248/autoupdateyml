@@ -55,7 +55,7 @@ test('detects the event style already used by a config', () => {
 test('generates httpApi events in an httpApi project', async () => {
   const dir = project(HTTP_API, {
     'src/hello.js': handler('GET /'),
-    'src/getInsults.js': handler('GET /insults'),
+    'src/getProducts.js': handler('GET /products'),
   });
   try {
     const result = await updateServerlessConfig({ cwd: dir });
@@ -72,7 +72,7 @@ test('generates httpApi events in an httpApi project', async () => {
 test('keeps generating http events in a REST project', async () => {
   const dir = project(REST_API, {
     'src/hello.js': handler('GET /'),
-    'src/getInsults.js': handler('GET /insults'),
+    'src/getProducts.js': handler('GET /products'),
   });
   try {
     const result = await updateServerlessConfig({ cwd: dir });
