@@ -175,3 +175,42 @@ test('a custom source directory is honoured', async () => {
     h.cleanup();
   }
 });
+
+test('scans an auto-detected directory rather than a hardcoded src/', async () => {
+  // Regression: the plugin passed source:'src' by default, which overrode the
+  // auto-detection in updateServerlessConfig. On a project whose handlers live
+  // in functions/ it scanned a directory that does not exist, found nothing and
+  // reported nothing — the tool appeared to do nothing at all.
+  const h = harness(WITHOUT_BLOCK, {
+    'functions/listProducts/index.mjs': 'export const handler = async () => ({});\n',
+  });
+  try {
+    await h.plugin.hooks.initialize();
+    assert.match(
+      readFileSync(path.join(h.dir, 'serverless.yml'), 'utf8'),
+      /listProducts:/,
+      'handlers in functions/ must be found without configuring source',
+    );
+  } finally {
+    h.cleanup();
+  }
+});
+
+test('an explicit custom.autoRoutes.source is still honoured', async () => {
+  const h = harness(
+    WITHOUT_BLOCK,
+    {
+      'api/getCustomers.js': 'export const handler = async () => ({});\n',
+      'functions/listProducts/index.mjs': 'export const handler = async () => ({});\n',
+    },
+    { source: 'api' },
+  );
+  try {
+    await h.plugin.hooks.initialize();
+    const text = readFileSync(path.join(h.dir, 'serverless.yml'), 'utf8');
+    assert.match(text, /getCustomers:/);
+    assert.doesNotMatch(text, /listProducts:/, 'only the configured dir should be scanned');
+  } finally {
+    h.cleanup();
+  }
+});

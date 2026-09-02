@@ -45,7 +45,10 @@ class ServerlessAutoRoutes {
   config() {
     const custom = this.serverless?.service?.custom?.autoRoutes ?? {};
     return {
-      source: custom.source ?? 'src',
+      // Undefined, not 'src': a fixed default would defeat the auto-detection
+      // in updateServerlessConfig and silently scan a directory that may not
+      // exist, finding nothing and reporting nothing.
+      source: custom.source,
       eventType: custom.eventType,
       strict: custom.strict ?? false,
       enabled: custom.enabled !== false,

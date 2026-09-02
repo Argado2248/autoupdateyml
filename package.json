@@ -4,7 +4,8 @@
   "description": "Keep serverless.yml functions in sync with annotated handlers.",
   "type": "module",
   "bin": {
-    "autoupdateyml": "bin/cli.js"
+    "autoupdateyml": "bin/cli.js",
+    "autoupdateyml-register": "bin/register-cli.js"
   },
   "exports": {
     ".": "./src/index.js",
@@ -16,7 +17,8 @@
     "plugins"
   ],
   "scripts": {
-    "test": "node --test tests/*.test.js"
+    "test": "node --test tests/*.test.js",
+    "postinstall": "node bin/postinstall.js"
   },
   "engines": {
     "node": ">=18"
