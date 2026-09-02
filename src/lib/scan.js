@@ -1,6 +1,8 @@
 import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 
+import { inferRoute } from './infer.js';
+
 const HANDLER_EXT = new Set(['.js', '.mjs', '.cjs', '.ts', '.mts', '.cts']);
 const IGNORE_DIRS = new Set(['node_modules', '.git', 'dist', 'build', 'coverage', '.serverless']);
 const TEST_FILE = /\.(test|spec)\.[mc]?[jt]s$/;
@@ -154,6 +156,71 @@ export function parseSource(source, relPath) {
   return { routes, problems };
 }
 
+/**
+ * Find exported handler functions in a source file that carries no annotation.
+ * Returns `[{ exportName, identifier }]`, where `identifier` is the name the
+ * route is derived from — the export's own name, or the file/directory name for
+ * a generically named export such as `handler`.
+ */
+export function findExports(source, relPath) {
+  const found = [];
+  const patterns = [
+    /export\s+(?:async\s+)?function\s+([A-Za-z0-9_$]+)/g,
+    /export\s+(?:const|let|var)\s+([A-Za-z0-9_$]+)\s*=/g,
+    /(?:module\.)?exports\.([A-Za-z0-9_$]+)\s*=/g,
+  ];
+
+  for (const re of patterns) {
+    let m;
+    while ((m = re.exec(source)) !== null) {
+      if (!found.some((f) => f.exportName === m[1])) {
+        found.push({ exportName: m[1] });
+      }
+    }
+  }
+
+  const fallback = functionNameFor(relPath);
+  return found.map(({ exportName }) => ({
+    exportName,
+    // `handler`, `main`, `default` say nothing about the route, so fall back to
+    // the file or directory name; a named export describes itself.
+    identifier: GENERIC_EXPORTS.has(exportName) ? fallback : exportName,
+  }));
+}
+
+const GENERIC_EXPORTS = new Set(['handler', 'handle', 'main', 'default', 'lambdaHandler']);
+
+/**
+ * Build routes for an unannotated file by inferring from its path and exports.
+ * Files that export nothing callable, or that look like shared helpers rather
+ * than handlers, yield no routes.
+ */
+function inferFromFile(source, relPath) {
+  const exports = findExports(source, relPath);
+  if (exports.length === 0) return [];
+
+  // A file exporting several things is usually a helper module, not a handler.
+  // Only treat it as a handler when exactly one export looks like an entrypoint.
+  const handlerish = exports.filter(
+    (e) => GENERIC_EXPORTS.has(e.exportName) || /^[a-z]/.test(e.exportName),
+  );
+  const candidates = exports.filter((e) => GENERIC_EXPORTS.has(e.exportName));
+  const chosen = candidates.length > 0 ? candidates : handlerish;
+  if (chosen.length !== 1) return [];
+
+  const { exportName, identifier } = chosen[0];
+  const { method, path: routePath } = inferRoute(relPath, identifier);
+
+  return [{
+    name: functionNameFor(relPath),
+    method,
+    path: routePath,
+    handler: handlerRefFor(relPath, exportName),
+    file: relPath,
+    inferred: true,
+  }];
+}
+
 async function* walk(dir) {
   let entries;
   try {
@@ -178,22 +245,46 @@ async function* walk(dir) {
  * @param {string} root  directory to walk
  * @param {string} cwd   base the emitted handler paths are relative to
  */
-export async function scanDirectory(root, cwd = process.cwd()) {
+export async function scanDirectory(root, cwd = process.cwd(), options = {}) {
   const routes = [];
   const problems = [];
 
-  for await (const file of walk(root)) {
+  const files = [];
+  for await (const file of walk(root)) files.push(file);
+
+  // Optionally include handler files sitting directly in the project root,
+  // without descending into it.
+  if (options.alsoScanRoot) {
+    let entries = [];
+    try {
+      entries = await readdir(cwd, { withFileTypes: true });
+    } catch { /* ignore */ }
+    for (const entry of entries) {
+      if (!entry.isFile()) continue;
+      files.push(path.join(cwd, entry.name));
+    }
+  }
+
+  for (const file of files) {
     const ext = path.extname(file);
     if (!HANDLER_EXT.has(ext)) continue;
     if (TEST_FILE.test(file) || DECLARATION_FILE.test(file)) continue;
 
     const source = await readFile(file, 'utf8');
-    if (!source.includes('@route') && !source.includes('@path')) continue;
-
     const rel = path.relative(cwd, file);
-    const result = parseSource(source, rel);
-    routes.push(...result.routes);
-    problems.push(...result.problems);
+
+    if (source.includes('@route') || source.includes('@path')) {
+      // An explicit annotation always wins.
+      const result = parseSource(source, rel);
+      routes.push(...result.routes);
+      problems.push(...result.problems);
+      continue;
+    }
+
+    // No annotation: infer from the file's location and name so the tool works
+    // on an existing project without any edits to its source.
+    const inferred = inferFromFile(source, rel);
+    routes.push(...inferred);
   }
 
   routes.sort((a, b) => a.name.localeCompare(b.name));

@@ -129,7 +129,7 @@ function quotePath(p) {
  * Render one function entry. `indent` is the block's base indent; nested levels
  * step by the same amount so the output matches the file's existing style.
  */
-export function renderFunction(route, indent) {
+export function renderFunction(route, indent, eventType = 'http') {
   const pad = ' '.repeat(indent);
   const step = ' '.repeat(indent);
   const lines = [];
@@ -137,17 +137,32 @@ export function renderFunction(route, indent) {
   lines.push(`${pad}${route.name}:`);
   lines.push(`${pad}${step}handler: ${route.handler}`);
   lines.push(`${pad}${step}events:`);
-  lines.push(`${pad}${step}${step}- http:`);
+  lines.push(`${pad}${step}${step}- ${eventType}:`);
   // Keys under `- http:` must sit deeper than the `http` key itself, which the
   // two-character "- " bullet already pushes right; otherwise they parse as
   // siblings of `http` and the event resolves to null.
   const ev = `${pad}${step}${step}  ${step}`;
   lines.push(`${ev}path: ${quotePath(route.path)}`);
   lines.push(`${ev}method: ${route.method}`);
-  if (route.cors !== undefined) lines.push(`${ev}cors: ${route.cors}`);
+  // httpApi (API Gateway v2) configures CORS once on the provider, not per
+  // event, so emitting it here would be rejected.
+  if (route.cors !== undefined && eventType === 'http') lines.push(`${ev}cors: ${route.cors}`);
   if (route.authorizer) lines.push(`${ev}authorizer: ${route.authorizer}`);
 
   return lines;
+}
+
+/**
+ * Detect which API Gateway event style a config already uses, so generated
+ * entries match the project instead of introducing a second, conflicting API.
+ * Defaults to `http` when the file has no events to learn from.
+ */
+export function detectEventType(lines) {
+  for (const line of lines) {
+    if (/^\s*-\s*httpApi:/.test(line) || /^\s*httpApi:/.test(line)) return 'httpApi';
+    if (/^\s*-\s*http:/.test(line)) return 'http';
+  }
+  return 'http';
 }
 
 /**
@@ -190,10 +205,11 @@ export function diffRoutes(routes, existing) {
  * Produce the updated file content. Stale entries are preserved verbatim, in
  * their original position relative to the managed ones.
  */
-export function applyUpdate(content, routes, plan) {
+export function applyUpdate(content, routes, plan, eventType) {
   const lines = content.split('\n');
   const block = findFunctionsBlock(lines);
   const indent = block.indent;
+  const evType = eventType ?? detectEventType(lines);
 
   const managedNames = new Set(routes.map((r) => r.name));
   const rendered = [];
@@ -207,7 +223,7 @@ export function applyUpdate(content, routes, plan) {
 
   for (const route of routes) {
     if (!managedNames.has(route.name)) continue;
-    rendered.push(...renderFunction(route, indent));
+    rendered.push(...renderFunction(route, indent, evType));
   }
 
   const head = lines.slice(0, block.found ? block.start : block.start);
