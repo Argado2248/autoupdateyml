@@ -6,14 +6,21 @@ on:
   pull_request:
 
 jobs:
-  lint:
+  test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      # PyYAML backs the structural tests, which parse generated YAML rather
+      # than regex-matching it — that is what catches bad event nesting.
       - name: Install PyYAML
         run: pip install pyyaml
       - name: Validate YAML
         run: python scripts/validate_yaml.py
+      - name: Run tests
+        run: npm test

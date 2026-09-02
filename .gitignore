@@ -34,4 +34,7 @@ venv/
 *.egg-info/
 
 # Go
-bin/
+# Scoped to the repo root so this project's committed bin/ (the CLI entrypoint)
+# is not swallowed along with Go build output.
+/bin/*
+!/bin/cli.js

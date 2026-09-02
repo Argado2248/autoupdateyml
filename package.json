@@ -1,0 +1,25 @@
+{
+  "name": "autoupdateyml",
+  "version": "1.0.0",
+  "description": "Keep serverless.yml functions in sync with annotated handlers.",
+  "type": "module",
+  "bin": {
+    "autoupdateyml": "bin/cli.js"
+  },
+  "exports": {
+    ".": "./src/index.js",
+    "./plugin": "./plugins/auto-routes/index.js"
+  },
+  "files": [
+    "bin",
+    "src",
+    "plugins"
+  ],
+  "scripts": {
+    "test": "node --test tests/*.test.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT"
+}
