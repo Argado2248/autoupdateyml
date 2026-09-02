@@ -68,12 +68,17 @@ export function formatReport(result, options = {}) {
 
   if (stale.length > 0) {
     out.push(
-      `${p}${yellow('⚠')} ${stale.length} function${stale.length === 1 ? '' : 's'} in serverless.yml with no annotated source:`,
+      `${p}${yellow('⚠')} ${stale.length} function${stale.length === 1 ? '' : 's'} in serverless.yml not matched to a handler:`,
     );
     for (const entry of stale) {
-      out.push(`${p}    ${entry.name}`);
+      // A missing handler file is a real defect (the function deploys but fails
+      // at runtime); an existing one is simply a route the tool does not manage.
+      const note = entry.handlerMissing
+        ? red('handler file not found')
+        : dim('not an http route, or hand-written');
+      out.push(`${p}    ${entry.name}  ${dim(entry.handler ?? '')} ${note}`);
     }
-    out.push(`${p}  ${dim('Left unchanged — remove by hand if dead.')}`);
+    out.push(`${p}  ${dim('Left unchanged.')}`);
   }
 
   for (const problem of result.problems) {
