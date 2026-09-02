@@ -25,8 +25,16 @@ project whose `serverless.yml` you want kept in sync:
 npm install --save-dev github:Argado2248/autoupdateyml
 ```
 
-That adds a `devDependencies` entry, so on any other machine a plain
-`npm install` is enough — nothing else to set up.
+The install registers the plugin in your `serverless.yml` for you, so there is
+nothing else to set up. It also adds a `devDependencies` entry, so on any other
+machine a plain `npm install` is enough.
+
+If you install with `--ignore-scripts` (or your CI does), run the registration
+step yourself:
+
+```bash
+npx autoupdateyml-register
+```
 
 To track a branch rather than the default one, append `#branch-name`:
 
@@ -34,15 +42,15 @@ To track a branch rather than the default one, append `#branch-name`:
 npm install --save-dev "github:Argado2248/autoupdateyml#worktree-serverless-auto-routes"
 ```
 
-Then register the plugin in `serverless.yml`:
+This is the line it adds:
 
 ```yaml
 plugins:
   - autoupdateyml/plugin
 ```
 
-That is the whole setup. `serverless deploy` now updates the config before it
-deploys, and the functions it writes are part of that same deploy.
+`serverless deploy` now updates the config before it deploys, and the functions
+it writes are part of that same deploy.
 
 ### Without npm
 
