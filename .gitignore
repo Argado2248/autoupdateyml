@@ -33,8 +33,6 @@ venv/
 .ruff_cache/
 *.egg-info/
 
-# Go
-# Scoped to the repo root so this project's committed bin/ (the CLI entrypoint)
-# is not swallowed along with Go build output.
-/bin/*
-!/bin/cli.js
+# Go build output — deliberately NOT a blanket `bin/` rule: this project ships
+# its executables from bin/, and ignoring that directory has twice silently
+# dropped committed entrypoints (the CLI, then the install scripts).
