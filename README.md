@@ -177,6 +177,9 @@ is reported:
   `--strict` to make them fail.
 - Only the first `http` event of an existing function is compared. A function
   with several events is reported as changed only if that first one drifts.
+- A `serverless.yml` with no `functions:` key at all is handled: the framework
+  loads the file before the plugin runs, so the generated functions are also
+  injected into the in-memory service to keep that first deploy correct.
 - Tested against Serverless Framework v4. The plugin also registers
   `before:package:createDeploymentArtifacts` and `before:deploy:deploy` as
   fallbacks for older versions; if the config is rewritten at that later point

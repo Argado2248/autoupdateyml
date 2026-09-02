@@ -59,6 +59,42 @@ class ServerlessAutoRoutes {
     }
   }
 
+  /**
+   * Mirror freshly written routes into the already-loaded service object.
+   *
+   * The framework reads `serverless.yml` into memory before `initialize` runs.
+   * Rewriting the file at that point is normally enough, because the loaded
+   * object still holds the `functions` map we are editing — but when the file
+   * had no `functions:` key at all there is no map to edit, and the first run
+   * would deploy nothing while reporting success. Adding the entries here keeps
+   * that first run correct.
+   *
+   * Only missing entries are added; anything already present was loaded from
+   * the file and is left as the framework parsed it.
+   */
+  syncInMemory(routes) {
+    const service = this.serverless?.service;
+    if (!service) return;
+    if (!service.functions) service.functions = {};
+
+    for (const route of routes) {
+      if (service.functions[route.name]) continue;
+      const http = { path: route.path, method: route.method };
+      if (route.cors !== undefined) http.cors = route.cors;
+      if (route.authorizer) http.authorizer = route.authorizer;
+      service.functions[route.name] = {
+        handler: route.handler,
+        events: [{ http }],
+      };
+    }
+
+    // setFunctionNames() assigns the `service-stage-name` Lambda names that the
+    // framework would otherwise have derived during its own load.
+    if (typeof service.setFunctionNames === 'function') {
+      service.setFunctionNames(this.options);
+    }
+  }
+
   async sync({ phase, force = false }) {
     // Each lifecycle hook is a fallback for the one before it; only the first
     // to fire in a given invocation should do the work.
@@ -86,6 +122,10 @@ class ServerlessAutoRoutes {
 
     if (result.error) {
       throw new Error(`${PREFIX} ${result.error}`);
+    }
+
+    if (result.written && phase === 'initialize') {
+      this.syncInMemory(result.routes);
     }
 
     if (result.written && phase !== 'initialize' && phase !== 'command') {
