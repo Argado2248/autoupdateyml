@@ -46,6 +46,7 @@ class ServerlessAutoRoutes {
     const custom = this.serverless?.service?.custom?.autoRoutes ?? {};
     return {
       source: custom.source ?? 'src',
+      eventType: custom.eventType,
       strict: custom.strict ?? false,
       enabled: custom.enabled !== false,
     };
@@ -72,19 +73,19 @@ class ServerlessAutoRoutes {
    * Only missing entries are added; anything already present was loaded from
    * the file and is left as the framework parsed it.
    */
-  syncInMemory(routes) {
+  syncInMemory(routes, eventType = 'http') {
     const service = this.serverless?.service;
     if (!service) return;
     if (!service.functions) service.functions = {};
 
     for (const route of routes) {
       if (service.functions[route.name]) continue;
-      const http = { path: route.path, method: route.method };
-      if (route.cors !== undefined) http.cors = route.cors;
-      if (route.authorizer) http.authorizer = route.authorizer;
+      const ev = { path: route.path, method: route.method };
+      if (route.cors !== undefined && eventType === 'http') ev.cors = route.cors;
+      if (route.authorizer) ev.authorizer = route.authorizer;
       service.functions[route.name] = {
         handler: route.handler,
-        events: [{ http }],
+        events: [{ [eventType]: ev }],
       };
     }
 
@@ -113,6 +114,7 @@ class ServerlessAutoRoutes {
       config: this.serverless?.configurationFilename,
       write: !check,
       strict: cfg.strict,
+      eventType: cfg.eventType,
     });
 
     const quiet = !result.changed && result.problems.length === 0 && !result.error;
@@ -125,7 +127,7 @@ class ServerlessAutoRoutes {
     }
 
     if (result.written && phase === 'initialize') {
-      this.syncInMemory(result.routes);
+      this.syncInMemory(result.routes, result.eventType);
     }
 
     if (result.written && phase !== 'initialize' && phase !== 'command') {

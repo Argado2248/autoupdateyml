@@ -4,6 +4,7 @@ import path from 'node:path';
 import { scanDirectory } from './lib/scan.js';
 import {
   applyUpdate,
+  detectEventType,
   diffRoutes,
   findFunctionsBlock,
   readExistingFunctions,
@@ -75,13 +76,14 @@ export async function updateServerlessConfig(options = {}) {
   const block = findFunctionsBlock(lines);
   const existing = readExistingFunctions(lines, block);
   const plan = diffRoutes(routes, existing);
+  const eventType = options.eventType ?? detectEventType(lines);
 
   const fatal = options.strict && problems.length > 0;
   const hasChanges = plan.added.length > 0 || plan.changed.length > 0;
 
   let written = false;
   if (hasChanges && write && !fatal) {
-    const updated = applyUpdate(content, routes, plan);
+    const updated = applyUpdate(content, routes, plan, eventType);
     if (updated !== content) {
       await writeFile(configPath, updated, 'utf8');
       written = true;
@@ -95,6 +97,7 @@ export async function updateServerlessConfig(options = {}) {
     routes,
     problems,
     plan,
+    eventType,
     changed: hasChanges,
     written,
     error: fatal ? 'annotation problems found (strict mode)' : null,
