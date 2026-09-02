@@ -24,8 +24,20 @@ functions:
 
 ## Install
 
+This package is not published to npm. Install it straight from GitHub, in the
+project whose `serverless.yml` you want kept in sync:
+
 ```bash
-npm install --save-dev autoupdateyml
+npm install --save-dev github:Argado2248/autoupdateyml
+```
+
+That adds a `devDependencies` entry, so on any other machine a plain
+`npm install` is enough — nothing else to set up.
+
+To track a branch rather than the default one, append `#branch-name`:
+
+```bash
+npm install --save-dev "github:Argado2248/autoupdateyml#worktree-serverless-auto-routes"
 ```
 
 Then register the plugin in `serverless.yml`:
@@ -35,15 +47,19 @@ plugins:
   - autoupdateyml/plugin
 ```
 
-Or, vendoring the `plugins/auto-routes` directory into your project:
+That is the whole setup. `serverless deploy` now updates the config before it
+deploys, and the functions it writes are part of that same deploy.
+
+### Without npm
+
+You can instead copy the `plugins/auto-routes`, `src` and `bin` directories into
+your project and point at the local path. The plugin resolves `src` relative to
+itself, so keep them siblings:
 
 ```yaml
 plugins:
   - ./plugins/auto-routes
 ```
-
-That is the whole setup. `serverless deploy` now updates the config before it
-deploys, and the functions it writes are part of that same deploy.
 
 ```
 $ serverless deploy
